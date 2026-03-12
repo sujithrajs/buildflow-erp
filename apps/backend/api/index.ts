@@ -1,28 +1,33 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { ExpressAdapter } from '@nestjs/platform-express';
-import * as express from 'express';
+import express, { Express, Request, Response } from 'express';
 import { AppModule } from '../src/app.module';
+import { INestApplication } from '@nestjs/common';
 
-const server = express();
+const server: Express = express();
+let cachedApp: INestApplication | null = null;
 
-let app: any;
+async function createApp(): Promise<INestApplication> {
+  if (cachedApp) return cachedApp;
 
-const bootstrap = async () => {
-  if (!app) {
-    app = await NestFactory.create(AppModule, new ExpressAdapter(server), {
-      logger: ['error', 'warn'],
-    });
-    app.enableCors({ origin: true, credentials: true });
-    await app.init();
+  const app = await NestFactory.create(
+    AppModule,
+    new ExpressAdapter(server),
+    { logger: false },
+  );
+  app.enableCors({ origin: true, credentials: true });
+  await app.init();
+  cachedApp = app;
+  return app;
+}
+
+export default async function handler(req: any, res: any): Promise<void> {
+  try {
+    await createApp();
+    server(req, res);
+  } catch (error) {
+    console.error('NestJS handler error:', error);
+    res.status(500).json({ error: String(error) });
   }
-  return server;
-};
-
-// Initialize on first load (warm up)
-bootstrap();
-
-export default async (req: any, res: any) => {
-  await bootstrap();
-  server(req, res);
-};
+}
