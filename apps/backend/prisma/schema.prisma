@@ -1,0 +1,217 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User & Access Control
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  firstName String
+  lastName  String
+  role      String   @default("SITE_ENGINEER")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  projects          Project[]
+  materialRequests  MaterialRequest[]
+  approvedMRs       MaterialRequest[] @relation("ApprovedBy")
+}
+
+
+// Core Entities
+model Project {
+  id          String   @id @default(uuid())
+  name        String
+  location    String
+  startDate   DateTime
+  endDate     DateTime?
+  budget      Float
+  status      String @default("PLANNING")
+  managerId   String
+  manager     User     @relation(fields: [managerId], references: [id])
+  
+  boqs               BOQ[]
+  materialRequests   MaterialRequest[]
+  inventory          Inventory[]
+  attendance         Attendance[]
+  subcontractorBills SubcontractorBill[]
+  usageLogs          UsageLog[]
+}
+
+
+model BOQ {
+  id          String   @id @default(uuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id])
+  name        String
+  
+  items       BOQItem[]
+}
+
+model BOQItem {
+  id          String   @id @default(uuid())
+  boqId       String
+  boq         BOQ      @relation(fields: [boqId], references: [id])
+  materialId  String
+  material    Material @relation(fields: [materialId], references: [id])
+  estQuantity Float
+  estCost     Float
+}
+
+model Material {
+  id          String   @id @default(uuid())
+  code        String   @unique
+  name        String
+  unit        String
+  rate        Float
+  
+  boqItems    BOQItem[]
+  inventory   Inventory[]
+  mrItems     MRItem[]
+}
+
+// Procurement Pipeline
+model MaterialRequest {
+  id          String   @id @default(uuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id])
+  requesterId String
+  requester   User     @relation(fields: [requesterId], references: [id])
+  status      String @default("PENDING")
+  approvedBy  String?
+  approver    User?    @relation("ApprovedBy", fields: [approvedBy], references: [id])
+  
+  items       MRItem[]
+  purchaseReqs PurchaseRequisition[]
+}
+
+
+model MRItem {
+  id         String   @id @default(uuid())
+  mrId       String
+  mr         MaterialRequest @relation(fields: [mrId], references: [id])
+  materialId String
+  material   Material @relation(fields: [materialId], references: [id])
+  quantity   Float
+}
+
+model PurchaseRequisition {
+  id        String   @id @default(uuid())
+  mrId      String
+  mr        MaterialRequest @relation(fields: [mrId], references: [id])
+  
+  purchaseOrders PurchaseOrder[]
+}
+
+model PurchaseOrder {
+  id        String   @id @default(uuid())
+  prId      String
+  pr        PurchaseRequisition @relation(fields: [prId], references: [id])
+  vendorId  String
+  vendor    Vendor   @relation(fields: [vendorId], references: [id])
+  status    String @default("ISSUED")
+  
+  goodsReceipts GoodsReceipt[]
+}
+
+
+model GoodsReceipt { // GRN
+  id        String   @id @default(uuid())
+  poId      String
+  po        PurchaseOrder @relation(fields: [poId], references: [id])
+  date      DateTime @default(now())
+}
+
+model Vendor {
+  id        String   @id @default(uuid())
+  name      String
+  email     String
+  gstNumber String?
+  
+  purchaseOrders PurchaseOrder[]
+}
+
+model Inventory {
+  id          String   @id @default(uuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id])
+  materialId  String
+  material    Material @relation(fields: [materialId], references: [id])
+  quantity    Float    @default(0)
+  minStock    Float    @default(0)
+}
+
+// Labour and Subcontractor Management
+model Subcontractor {
+  id          String   @id @default(uuid())
+  name        String
+  contactNum  String?
+  bills       SubcontractorBill[]
+}
+
+model SubcontractorBill {
+  id               String   @id @default(uuid())
+  subcontractorId  String
+  subcontractor    Subcontractor @relation(fields: [subcontractorId], references: [id])
+  projectId        String
+  project          Project       @relation(fields: [projectId], references: [id])
+  amount           Float
+  date             DateTime      @default(now())
+}
+
+model Labour {
+  id          String   @id @default(uuid())
+  name        String
+  type        String   // e.g. Skilled, Unskilled, Mason
+  dailyWage   Float
+  
+  attendance  Attendance[]
+}
+
+model Attendance {
+  id          String   @id @default(uuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id])
+  labourId    String
+  labour      Labour   @relation(fields: [labourId], references: [id])
+  date        DateTime @default(now())
+  status      String @default("PRESENT")
+}
+
+// Machinery and Equipment Management
+model Machinery {
+  id              String   @id @default(uuid())
+  code            String   @unique
+  name            String
+  type            String   // e.g. Excavator, Crane
+  hourlyRate      Float
+  status          String @default("AVAILABLE")
+  
+  maintenanceLogs MaintenanceLog[]
+  usageLogs       UsageLog[]
+}
+
+model MaintenanceLog {
+  id          String   @id @default(uuid())
+  machineryId String
+  machinery   Machinery @relation(fields: [machineryId], references: [id])
+  date        DateTime @default(now())
+  cost        Float
+  description String
+}
+
+model UsageLog {
+  id          String   @id @default(uuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id])
+  machineryId String
+  machinery   Machinery @relation(fields: [machineryId], references: [id])
+  hours       Float
+  date        DateTime @default(now())
+}
